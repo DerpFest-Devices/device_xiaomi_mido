@@ -551,14 +551,14 @@ function configure_zram_parameters() {
     # For 512MB Go device, size = 384MB, set same for Non-Go.
     # For 1GB Go device, size = 768MB, set same for Non-Go.
     # For 2GB Go device, size = 1536MB, set same for Non-Go.
-    # For >2GB Non-Go devices, size = 50% of RAM size. Limit the size to 4GB.
+    # For >2GB Non-Go devices, size = 2GB. Limit the size to 4GB.
 
     let RamSizeGB="( $MemTotal / 1048576 ) + 1"
     diskSizeUnit=M
     if [ $RamSizeGB -le 2 ]; then
         let zRamSizeMB="( $RamSizeGB * 1024 ) * 3 / 4"
     else
-        let zRamSizeMB="( $RamSizeGB * 1024 ) / 2"
+        let zRamSizeMB=2048
     fi
 
     # use MB avoid 32 bit overflow
@@ -764,10 +764,20 @@ else
         fi
     fi
 
-    # Set allocstall_threshold to 0 for all targets.
-    # Set swappiness to 100 for all targets
-    echo 0 > /sys/module/vmpressure/parameters/allocstall_threshold
-    echo 100 > /proc/sys/vm/swappiness
+    KernelVersionStr=`cat /proc/sys/kernel/osrelease`
+    KernelVersionS=${KernelVersionStr:2:2}
+    KernelVersionA=${KernelVersionStr:0:1}
+    KernelVersionB=${KernelVersionS%.*}
+
+    # Don't account allocstalls for <= 2GB RAM targets on kernel versions < 4.9
+    if [ $KernelVersionA -lt 4 ] || [ $KernelVersionB -lt 9 ]; then
+        if [ $MemTotal -le 2097152 ]; then
+            echo 100 > /sys/module/vmpressure/parameters/allocstall_threshold
+        fi
+    fi
+
+    # Set swappiness to 80 for all targets
+    echo 80 > /proc/sys/vm/swappiness
 
     # Disable wsf for all targets beacause we are using efk.
     # wsf Range : 1..1000 So set to bare minimum value 1.
